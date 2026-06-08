@@ -26,7 +26,7 @@ class MyApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
         useMaterial3: true,
       ),
-      initialRoute: '/feed',
+      initialRoute: '/login',
       routes: {
         '/feed': (context) => const FeedScreen(),
         '/discover': (context) => const DiscoverScreen(),
