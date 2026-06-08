@@ -16,6 +16,11 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
   bool isLoading = true;
   final TextEditingController searchController = TextEditingController();
 
+  // Cores da paleta (igual ao feed e perfil)
+  final Color backgroundColor = const Color(0xFFF3EEC8);
+  final Color primaryColor = const Color(0xFF473835);
+  final Color accentColor = const Color(0xFFB85C5A);
+
   @override
   void initState() {
     super.initState();
@@ -85,24 +90,91 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text(
-          'Descobrir',
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
-            fontSize: 24,
+      backgroundColor: backgroundColor,
+      appBar: PreferredSize(
+        preferredSize: const Size.fromHeight(80),
+        child: Container(
+          decoration: BoxDecoration(
+            color: primaryColor,
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.1),
+                blurRadius: 4,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: Row(
+                children: [
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Text(
+                        'LETTERBOX',
+                        style: TextStyle(
+                          color: Color(0xFFF3EEC8),
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: 1.5,
+                        ),
+                      ),
+                      Row(
+                        children: [
+                          const Text(
+                            'DESDE',
+                            style: TextStyle(
+                              color: Color(0xFFF3EEC8),
+                              fontSize: 8,
+                              letterSpacing: 1,
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF3EEC8),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: const Text(
+                              '2026',
+                              style: TextStyle(
+                                color: Color(0xFF473835),
+                                fontSize: 8,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                  const Spacer(),
+                  Container(
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF3EEC8).withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Row(
+                      children: [
+                        IconButton(
+                          icon: const Icon(Icons.filter_list, color: Color(0xFFF3EEC8), size: 22),
+                          onPressed: () {
+                            _showFilterDialog();
+                          },
+                          tooltip: 'Filtrar',
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
         ),
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.filter_list_outlined),
-            onPressed: () {
-              _showFilterDialog();
-            },
-            tooltip: 'Filtrar',
-          ),
-        ],
       ),
       body: Column(
         children: [
@@ -111,13 +183,12 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
             padding: const EdgeInsets.all(16),
             child: Container(
               decoration: BoxDecoration(
-                color: Colors.grey[100],
+                color: Colors.white,
                 borderRadius: BorderRadius.circular(12),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.grey.withOpacity(0.1),
-                    spreadRadius: 1,
-                    blurRadius: 4,
+                    color: Colors.black.withOpacity(0.05),
+                    blurRadius: 8,
                     offset: const Offset(0, 2),
                   ),
                 ],
@@ -126,11 +197,11 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
                 controller: searchController,
                 decoration: InputDecoration(
                   hintText: 'Buscar filmes por título, gênero ou ano...',
-                  hintStyle: TextStyle(color: Colors.grey[400]),
-                  prefixIcon: Icon(Icons.search, color: Colors.grey[600]),
+                  hintStyle: TextStyle(color: primaryColor.withOpacity(0.5)),
+                  prefixIcon: Icon(Icons.search, color: primaryColor.withOpacity(0.7)),
                   suffixIcon: searchController.text.isNotEmpty
                       ? IconButton(
-                          icon: Icon(Icons.clear, color: Colors.grey[600]),
+                          icon: Icon(Icons.clear, color: primaryColor.withOpacity(0.7)),
                           onPressed: () {
                             searchController.clear();
                           },
@@ -149,7 +220,11 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
           // Resultados
           Expanded(
             child: isLoading
-                ? const Center(child: CircularProgressIndicator())
+                ? Center(
+                    child: CircularProgressIndicator(
+                      valueColor: AlwaysStoppedAnimation<Color>(primaryColor),
+                    ),
+                  )
                 : filteredMovies.isEmpty
                     ? Center(
                         child: Column(
@@ -158,7 +233,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
                             Icon(
                               Icons.movie_outlined,
                               size: 64,
-                              color: Colors.grey[400],
+                              color: primaryColor.withOpacity(0.3),
                             ),
                             const SizedBox(height: 16),
                             Text(
@@ -167,7 +242,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
                                   : 'Nenhum resultado para "${searchController.text}"',
                               style: TextStyle(
                                 fontSize: 16,
-                                color: Colors.grey[600],
+                                color: primaryColor.withOpacity(0.6),
                               ),
                             ),
                             const SizedBox(height: 8),
@@ -176,13 +251,17 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
                                 onPressed: () {
                                   searchController.clear();
                                 },
-                                child: const Text('Limpar busca'),
+                                child: Text(
+                                  'Limpar busca',
+                                  style: TextStyle(color: accentColor),
+                                ),
                               ),
                           ],
                         ),
                       )
                     : RefreshIndicator(
                         onRefresh: loadMovies,
+                        color: primaryColor,
                         child: GridView.builder(
                           padding: const EdgeInsets.all(12),
                           gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
@@ -220,10 +299,17 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
   }
 
   Widget _buildMovieCard(Map<String, dynamic> movie) {
-    return Card(
-      elevation: 3,
-      shape: RoundedRectangleBorder(
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
         borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       child: InkWell(
         onTap: () {
@@ -245,20 +331,22 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
                   fit: BoxFit.cover,
                   errorBuilder: (context, error, stackTrace) {
                     return Container(
-                      color: Colors.grey[300],
-                      child: const Icon(
+                      color: primaryColor.withOpacity(0.1),
+                      child: Icon(
                         Icons.movie,
                         size: 50,
-                        color: Colors.grey,
+                        color: primaryColor.withOpacity(0.3),
                       ),
                     );
                   },
                   loadingBuilder: (context, child, loadingProgress) {
                     if (loadingProgress == null) return child;
                     return Container(
-                      color: Colors.grey[200],
-                      child: const Center(
-                        child: CircularProgressIndicator(),
+                      color: primaryColor.withOpacity(0.05),
+                      child: Center(
+                        child: CircularProgressIndicator(
+                          valueColor: AlwaysStoppedAnimation<Color>(primaryColor),
+                        ),
                       ),
                     );
                   },
@@ -274,9 +362,10 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
                 children: [
                   Text(
                     movie['titulo'] ?? 'Sem título',
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontWeight: FontWeight.bold,
                       fontSize: 14,
+                      color: primaryColor,
                     ),
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
@@ -287,7 +376,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
                       movie['ano'].toString(),
                       style: TextStyle(
                         fontSize: 12,
-                        color: Colors.grey[600],
+                        color: primaryColor.withOpacity(0.6),
                       ),
                     ),
                   if (movie['genero'] != null && movie['genero'].toString().isNotEmpty)
@@ -298,14 +387,14 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
                         vertical: 2,
                       ),
                       decoration: BoxDecoration(
-                        color: Colors.deepPurple[50],
+                        color: primaryColor.withOpacity(0.1),
                         borderRadius: BorderRadius.circular(4),
                       ),
                       child: Text(
                         movie['genero'].toString(),
                         style: TextStyle(
                           fontSize: 10,
-                          color: Colors.deepPurple[700],
+                          color: primaryColor,
                           fontWeight: FontWeight.w500,
                         ),
                         maxLines: 1,
@@ -371,11 +460,11 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
                           errorBuilder: (context, error, stackTrace) {
                             return Container(
                               height: 250,
-                              color: Colors.grey[300],
-                              child: const Icon(
+                              color: primaryColor.withOpacity(0.1),
+                              child: Icon(
                                 Icons.movie,
                                 size: 80,
-                                color: Colors.grey,
+                                color: primaryColor.withOpacity(0.3),
                               ),
                             );
                           },
@@ -465,7 +554,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
                         Row(
                           children: [
                             Expanded(
-                              child: ElevatedButton.icon(
+                              child: ElevatedButton(
                                 onPressed: () {
                                   Navigator.pop(context);
                                   ScaffoldMessenger.of(context).showSnackBar(
@@ -474,13 +563,21 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
                                     ),
                                   );
                                 },
-                                icon: const Icon(Icons.rate_review),
-                                label: const Text('Avaliar Filme'),
                                 style: ElevatedButton.styleFrom(
+                                  backgroundColor: accentColor,
+                                  foregroundColor: Colors.white,
                                   padding: const EdgeInsets.symmetric(vertical: 12),
                                   shape: RoundedRectangleBorder(
                                     borderRadius: BorderRadius.circular(8),
                                   ),
+                                ),
+                                child: const Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(Icons.rate_review, size: 18),
+                                    SizedBox(width: 8),
+                                    Text('Avaliar Filme'),
+                                  ],
                                 ),
                               ),
                             ),
@@ -527,7 +624,10 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
         return StatefulBuilder(
           builder: (context, setStateDialog) {
             return AlertDialog(
-              title: const Text('Filtrar Filmes'),
+              title: Text(
+                'Filtrar Filmes',
+                style: TextStyle(color: primaryColor),
+              ),
               content: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
@@ -594,6 +694,9 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
                     });
                     Navigator.pop(context);
                   },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: primaryColor,
+                  ),
                   child: const Text('Aplicar'),
                 ),
               ],
