@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:letterboxd/login.dart';
+import 'package:letterboxd/pages/login.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'login.dart';
 
