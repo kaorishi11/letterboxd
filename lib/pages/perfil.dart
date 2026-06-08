@@ -1,7 +1,7 @@
-// lib/screens/profile_screen.dart
-
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:image_picker/image_picker.dart';
+import 'dart:io';
 import '../componets/navbar.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -18,6 +18,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   List<Map<String, dynamic>> userReviews = [];
   bool isLoading = true;
   bool isEditing = false;
+  bool isUploadingImage = false;
   
   // Controllers para edição
   final TextEditingController nameController = TextEditingController();
@@ -27,6 +28,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   int moviesWatched = 0;
   int followers = 0;
   int following = 0;
+  
+  final ImagePicker _picker = ImagePicker();
 
   @override
   void initState() {
@@ -56,7 +59,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
 
     try {
-      // Carregar dados do usuário
+      // Carregar dados do usuário do banco
       final userResponse = await supabase
           .from('usuarios')
           .select('*')
@@ -71,7 +74,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         bioController.text = userData?['bio'] ?? '';
       }
 
-      // Carregar avaliações do usuário
+      // Carregar avaliações do usuário do banco
       final reviewsResponse = await supabase
           .from('avaliacoes')
           .select('''
@@ -79,7 +82,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             comentario,
             nota,
             created_at,
-            filmes (id, titulo, poster_url, ano, genero)
+            filmes (id, titulo, poster_url, ano, genero, descricao)
           ''')
           .eq('usuario_id', currentUser.id)
           .order('created_at', ascending: false);
@@ -89,11 +92,24 @@ class _ProfileScreenState extends State<ProfileScreen> {
         moviesWatched = userReviews.length;
       });
 
-      // TODO: Carregar seguidores e seguindo quando implementar tabelas de relacionamento
-      // Por enquanto, valores mockados
+      // Carregar seguidores do banco
+      final followersResponse = await supabase
+          .from('seguidores')
+          .select('id')
+          .eq('seguindo_id', currentUser.id);
+      
       setState(() {
-        followers = 128;
-        following = 94;
+        followers = followersResponse.length;
+      });
+
+      // Carregar seguindo do banco
+      final followingResponse = await supabase
+          .from('seguidores')
+          .select('id')
+          .eq('seguidor_id', currentUser.id);
+      
+      setState(() {
+        following = followingResponse.length;
       });
 
     } catch (e) {
@@ -112,6 +128,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
+  // Função para atualizar perfil (nome e bio)
   Future<void> updateProfile() async {
     final currentUser = supabase.auth.currentUser;
     
@@ -122,17 +139,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
     });
 
     try {
+      // Atualizar no banco
       await supabase
           .from('usuarios')
           .update({
-            'nome': nameController.text,
-            'bio': bioController.text,
+            'nome': nameController.text.trim(),
+            'bio': bioController.text.trim(),
           })
           .eq('id', currentUser.id);
 
+      // Atualizar dados locais
       setState(() {
-        userData?['nome'] = nameController.text;
-        userData?['bio'] = bioController.text;
+        userData?['nome'] = nameController.text.trim();
+        userData?['bio'] = bioController.text.trim();
         isEditing = false;
       });
 
@@ -152,6 +171,95 @@ class _ProfileScreenState extends State<ProfileScreen> {
       if (mounted) {
         setState(() {
           isLoading = false;
+        });
+      }
+    }
+  }
+
+  // Função para atualizar foto de perfil
+ Future<void> updateProfilePicture() async {
+  showModalBottomSheet(
+    context: context,
+    builder: (context) => SafeArea(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ListTile(
+            leading: const Icon(Icons.photo_library),
+            title: const Text('Escolher da galeria'),
+            onTap: () {  // Mudar de onPressed para onTap
+              Navigator.pop(context);
+              _pickImage(ImageSource.gallery);
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.camera_alt),
+            title: const Text('Tirar foto'),
+            onTap: () {  // Mudar de onPressed para onTap
+              Navigator.pop(context);
+              _pickImage(ImageSource.camera);
+            },
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+  Future<void> _pickImage(ImageSource source) async {
+    final currentUser = supabase.auth.currentUser;
+    if (currentUser == null) return;
+
+    setState(() {
+      isUploadingImage = true;
+    });
+
+    try {
+      final XFile? image = await _picker.pickImage(
+        source: source,
+        maxWidth: 500,
+        maxHeight: 500,
+        imageQuality: 80,
+      );
+
+      if (image != null) {
+        final File imageFile = File(image.path);
+        final String fileName = '${currentUser.id}_${DateTime.now().millisecondsSinceEpoch}.jpg';
+        
+        // Upload da imagem para o Supabase Storage
+        await supabase.storage.from('avatars').upload(fileName, imageFile);
+        
+        // Pegar URL pública da imagem
+        final String imageUrl = supabase.storage.from('avatars').getPublicUrl(fileName);
+        
+        // Atualizar o campo foto_perfil no banco
+        await supabase
+            .from('usuarios')
+            .update({'foto_perfil': imageUrl})
+            .eq('id', currentUser.id);
+        
+        // Atualizar dados locais
+        setState(() {
+          userData?['foto_perfil'] = imageUrl;
+        });
+        
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Foto de perfil atualizada!')),
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint('Erro ao fazer upload da imagem: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Erro ao atualizar foto: $e')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          isUploadingImage = false;
         });
       }
     }
@@ -246,7 +354,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ),
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
         actions: [
-          if (!isEditing)
+          if (!isEditing && !isUploadingImage)
             IconButton(
               icon: const Icon(Icons.edit_outlined),
               onPressed: () {
@@ -256,26 +364,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
               },
               tooltip: 'Editar Perfil',
             ),
-          IconButton(
-            icon: const Icon(Icons.logout_outlined),
-            onPressed: logout,
-            tooltip: 'Sair',
-          ),
+          if (!isUploadingImage)
+            IconButton(
+              icon: const Icon(Icons.logout_outlined),
+              onPressed: logout,
+              tooltip: 'Sair',
+            ),
         ],
       ),
-      body: isLoading
+      body: isLoading || isUploadingImage
           ? const Center(child: CircularProgressIndicator())
           : RefreshIndicator(
               onRefresh: loadUserData,
               child: CustomScrollView(
                 slivers: [
-                  // Cabeçalho do Perfil
                   SliverToBoxAdapter(
                     child: Column(
                       children: [
                         const SizedBox(height: 20),
                         
-                        // Foto de Perfil
+                        // Foto de Perfil (sempre mostrando o botão de editar)
                         Center(
                           child: Stack(
                             children: [
@@ -300,24 +408,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                       : null,
                                 ),
                               ),
-                              if (isEditing)
-                                Positioned(
-                                  bottom: 0,
-                                  right: 0,
-                                  child: CircleAvatar(
-                                    backgroundColor: Colors.deepPurple,
-                                    radius: 18,
-                                    child: IconButton(
-                                      icon: const Icon(Icons.camera_alt, size: 16, color: Colors.white),
-                                      onPressed: () {
-                                        // TODO: Implementar upload de foto
-                                        ScaffoldMessenger.of(context).showSnackBar(
-                                          const SnackBar(content: Text('Upload de foto em breve')),
-                                        );
-                                      },
-                                    ),
+                              // Botão de editar foto sempre visível
+                              Positioned(
+                                bottom: 0,
+                                right: 0,
+                                child: CircleAvatar(
+                                  backgroundColor: Colors.deepPurple,
+                                  radius: 20,
+                                  child: IconButton(
+                                    icon: const Icon(Icons.camera_alt, size: 18, color: Colors.white),
+                                    onPressed: updateProfilePicture,
+                                    tooltip: 'Alterar foto',
                                   ),
                                 ),
+                              ),
                             ],
                           ),
                         ),
@@ -433,13 +537,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                   fontWeight: FontWeight.bold,
                                 ),
                               ),
-                              Text(
-                                'Ver todos',
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  color: Colors.deepPurple,
-                                ),
-                              ),
                             ],
                           ),
                         ),
@@ -499,7 +596,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    // Poster
                                     Expanded(
                                       child: ClipRRect(
                                         borderRadius: const BorderRadius.vertical(
@@ -522,8 +618,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                         ),
                                       ),
                                     ),
-                                    
-                                    // Nota e título
                                     Padding(
                                       padding: const EdgeInsets.all(6),
                                       child: Column(
