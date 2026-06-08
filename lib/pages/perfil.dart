@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:image_picker/image_picker.dart';
-import 'dart:io';
 import '../componets/navbar.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -16,20 +14,25 @@ class _ProfileScreenState extends State<ProfileScreen> {
   
   Map<String, dynamic>? userData;
   List<Map<String, dynamic>> userReviews = [];
+  List<Map<String, dynamic>> suggestedUsers = [];
   bool isLoading = true;
   bool isEditing = false;
-  bool isUploadingImage = false;
+  bool isLoadingSuggestions = false;
   
   // Controllers para edição
   final TextEditingController nameController = TextEditingController();
   final TextEditingController bioController = TextEditingController();
+  final TextEditingController photoUrlController = TextEditingController();
   
   // Estatísticas
   int moviesWatched = 0;
   int followers = 0;
   int following = 0;
-  
-  final ImagePicker _picker = ImagePicker();
+
+  // Cores da paleta (igual ao feed)
+  final Color backgroundColor = const Color(0xFFF3EEC8);
+  final Color primaryColor = const Color(0xFF473835);
+  final Color accentColor = const Color(0xFFB85C5A);
 
   @override
   void initState() {
@@ -41,6 +44,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   void dispose() {
     nameController.dispose();
     bioController.dispose();
+    photoUrlController.dispose();
     super.dispose();
   }
 
@@ -72,6 +76,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         });
         nameController.text = userData?['nome'] ?? '';
         bioController.text = userData?['bio'] ?? '';
+        photoUrlController.text = userData?['foto_perfil'] ?? '';
       }
 
       // Carregar avaliações do usuário do banco
@@ -112,6 +117,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
         following = followingResponse.length;
       });
 
+      // Carregar sugestões de perfis para seguir
+      await loadSuggestedUsers(currentUser.id);
+
     } catch (e) {
       debugPrint('Erro ao carregar dados do perfil: $e');
       if (mounted) {
@@ -128,7 +136,90 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
-  // Função para atualizar perfil (nome e bio)
+  Future<void> loadSuggestedUsers(String currentUserId) async {
+    setState(() {
+      isLoadingSuggestions = true;
+    });
+
+    try {
+      // Buscar IDs dos usuários que o currentUser já segue
+      final followingResponse = await supabase
+          .from('seguidores')
+          .select('seguindo_id')
+          .eq('seguidor_id', currentUserId);
+      
+      final followingIds = followingResponse.map((e) => e['seguindo_id'] as String).toList();
+      
+      // Buscar usuários que não são o currentUser e que ele não segue
+      // Limitar a 10 sugestões
+      final query = supabase
+          .from('usuarios')
+          .select('id, nome, foto_perfil, bio')
+          .neq('id', currentUserId)
+          .limit(10);
+      
+      // Se ele segue alguém, excluir esses IDs
+      if (followingIds.isNotEmpty) {
+        // Nota: O Supabase não tem NOT IN diretamente, então fazemos a filtragem no app
+        final response = await query;
+        final allUsers = List<Map<String, dynamic>>.from(response);
+        
+        setState(() {
+          suggestedUsers = allUsers.where((user) => !followingIds.contains(user['id'])).toList();
+        });
+      } else {
+        final response = await query;
+        setState(() {
+          suggestedUsers = List<Map<String, dynamic>>.from(response);
+        });
+      }
+    } catch (e) {
+      debugPrint('Erro ao carregar sugestões: $e');
+    } finally {
+      if (mounted) {
+        setState(() {
+          isLoadingSuggestions = false;
+        });
+      }
+    }
+  }
+
+  Future<void> followUser(String userId, String userName) async {
+    final currentUser = supabase.auth.currentUser;
+    if (currentUser == null) return;
+
+    try {
+      await supabase.from('seguidores').insert({
+        'seguidor_id': currentUser.id,
+        'seguindo_id': userId,
+      });
+
+      // Atualizar estatísticas
+      setState(() {
+        following++;
+      });
+
+      // Remover da lista de sugestões
+      setState(() {
+        suggestedUsers.removeWhere((user) => user['id'] == userId);
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Você começou a seguir $userName!')),
+        );
+      }
+    } catch (e) {
+      debugPrint('Erro ao seguir usuário: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Erro ao seguir usuário: $e')),
+        );
+      }
+    }
+  }
+
+  // Função para atualizar perfil (nome, bio e foto)
   Future<void> updateProfile() async {
     final currentUser = supabase.auth.currentUser;
     
@@ -145,6 +236,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           .update({
             'nome': nameController.text.trim(),
             'bio': bioController.text.trim(),
+            'foto_perfil': photoUrlController.text.trim().isEmpty ? null : photoUrlController.text.trim(),
           })
           .eq('id', currentUser.id);
 
@@ -152,6 +244,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       setState(() {
         userData?['nome'] = nameController.text.trim();
         userData?['bio'] = bioController.text.trim();
+        userData?['foto_perfil'] = photoUrlController.text.trim().isEmpty ? null : photoUrlController.text.trim();
         isEditing = false;
       });
 
@@ -171,95 +264,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
       if (mounted) {
         setState(() {
           isLoading = false;
-        });
-      }
-    }
-  }
-
-  // Função para atualizar foto de perfil
- Future<void> updateProfilePicture() async {
-  showModalBottomSheet(
-    context: context,
-    builder: (context) => SafeArea(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          ListTile(
-            leading: const Icon(Icons.photo_library),
-            title: const Text('Escolher da galeria'),
-            onTap: () {  // Mudar de onPressed para onTap
-              Navigator.pop(context);
-              _pickImage(ImageSource.gallery);
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.camera_alt),
-            title: const Text('Tirar foto'),
-            onTap: () {  // Mudar de onPressed para onTap
-              Navigator.pop(context);
-              _pickImage(ImageSource.camera);
-            },
-          ),
-        ],
-      ),
-    ),
-  );
-}
-
-  Future<void> _pickImage(ImageSource source) async {
-    final currentUser = supabase.auth.currentUser;
-    if (currentUser == null) return;
-
-    setState(() {
-      isUploadingImage = true;
-    });
-
-    try {
-      final XFile? image = await _picker.pickImage(
-        source: source,
-        maxWidth: 500,
-        maxHeight: 500,
-        imageQuality: 80,
-      );
-
-      if (image != null) {
-        final File imageFile = File(image.path);
-        final String fileName = '${currentUser.id}_${DateTime.now().millisecondsSinceEpoch}.jpg';
-        
-        // Upload da imagem para o Supabase Storage
-        await supabase.storage.from('avatars').upload(fileName, imageFile);
-        
-        // Pegar URL pública da imagem
-        final String imageUrl = supabase.storage.from('avatars').getPublicUrl(fileName);
-        
-        // Atualizar o campo foto_perfil no banco
-        await supabase
-            .from('usuarios')
-            .update({'foto_perfil': imageUrl})
-            .eq('id', currentUser.id);
-        
-        // Atualizar dados locais
-        setState(() {
-          userData?['foto_perfil'] = imageUrl;
-        });
-        
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Foto de perfil atualizada!')),
-          );
-        }
-      }
-    } catch (e) {
-      debugPrint('Erro ao fazer upload da imagem: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Erro ao atualizar foto: $e')),
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() {
-          isUploadingImage = false;
         });
       }
     }
@@ -290,15 +294,218 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
+  void _showReviewDetails(Map<String, dynamic> review) {
+    final movie = review['filmes'];
+    
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => DraggableScrollableSheet(
+        initialChildSize: 0.7,
+        minChildSize: 0.5,
+        maxChildSize: 0.9,
+        builder: (_, scrollController) {
+          return Container(
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(20),
+              ),
+            ),
+            child: SingleChildScrollView(
+              controller: scrollController,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Container(
+                      margin: const EdgeInsets.only(top: 12),
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: Colors.grey[300],
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+                  
+                  Stack(
+                    children: [
+                      ClipRRect(
+                        borderRadius: const BorderRadius.vertical(
+                          top: Radius.circular(20),
+                        ),
+                        child: Image.network(
+                          movie?['poster_url'] ?? '',
+                          height: 250,
+                          width: double.infinity,
+                          fit: BoxFit.cover,
+                          errorBuilder: (context, error, stackTrace) {
+                            return Container(
+                              height: 250,
+                              color: primaryColor.withOpacity(0.1),
+                              child: const Icon(
+                                Icons.movie,
+                                size: 80,
+                                color: Colors.grey,
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                      Container(
+                        height: 250,
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [
+                              Colors.transparent,
+                              Colors.black.withOpacity(0.7),
+                            ],
+                          ),
+                        ),
+                      ),
+                      Positioned(
+                        bottom: 16,
+                        left: 16,
+                        right: 16,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              movie?['titulo'] ?? 'Sem título',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 24,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Row(
+                              children: [
+                                if (movie?['ano'] != null)
+                                  Text(
+                                    movie!['ano'].toString(),
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 14,
+                                    ),
+                                  ),
+                                if (movie?['ano'] != null && movie?['genero'] != null)
+                                  const SizedBox(width: 8),
+                                if (movie?['genero'] != null)
+                                  Text(
+                                    movie!['genero'].toString(),
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 14,
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  
+                  Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: primaryColor.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(Icons.star, color: Colors.amber, size: 18),
+                              const SizedBox(width: 4),
+                              Text(
+                                '${review['nota']}/5',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.bold,
+                                  color: primaryColor,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        
+                        if (review['comentario'] != null && review['comentario'].toString().isNotEmpty) ...[
+                          const Text(
+                            'Minha avaliação:',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: backgroundColor,
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Text(
+                              review['comentario'],
+                              style: TextStyle(
+                                fontSize: 14,
+                                height: 1.5,
+                                color: primaryColor,
+                              ),
+                            ),
+                          ),
+                        ],
+                        
+                        const SizedBox(height: 24),
+                        
+                        const Text(
+                          'Sinopse',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          movie?['descricao'] ?? 'Nenhuma descrição disponível para este filme.',
+                          style: const TextStyle(
+                            fontSize: 14,
+                            height: 1.5,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final currentUser = supabase.auth.currentUser;
     
     if (currentUser == null) {
       return Scaffold(
+        backgroundColor: backgroundColor,
         appBar: AppBar(
           title: const Text('Perfil'),
-          backgroundColor: Theme.of(context).colorScheme.inversePrimary,
+          backgroundColor: primaryColor,
+          foregroundColor: backgroundColor,
         ),
         body: Center(
           child: Column(
@@ -320,6 +527,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 onPressed: () {
                   Navigator.pushReplacementNamed(context, '/login');
                 },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: primaryColor,
+                  foregroundColor: backgroundColor,
+                ),
                 child: const Text('Fazer Login'),
               ),
             ],
@@ -344,38 +555,107 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text(
-          'Perfil',
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
-            fontSize: 24,
+      backgroundColor: backgroundColor,
+      appBar: PreferredSize(
+        preferredSize: const Size.fromHeight(80),
+        child: Container(
+          decoration: BoxDecoration(
+            color: primaryColor,
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.1),
+                blurRadius: 4,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: Row(
+                children: [
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Text(
+                        'LETTERBOX',
+                        style: TextStyle(
+                          color: Color(0xFFF3EEC8),
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: 1.5,
+                        ),
+                      ),
+                      Row(
+                        children: [
+                          const Text(
+                            'DESDE',
+                            style: TextStyle(
+                              color: Color(0xFFF3EEC8),
+                              fontSize: 8,
+                              letterSpacing: 1,
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF3EEC8),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: const Text(
+                              '2026',
+                              style: TextStyle(
+                                color: Color(0xFF473835),
+                                fontSize: 8,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                  const Spacer(),
+                  Container(
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF3EEC8).withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Row(
+                      children: [
+                        if (!isEditing)
+                          IconButton(
+                            icon: const Icon(Icons.edit_outlined, color: Color(0xFFF3EEC8), size: 22),
+                            onPressed: () {
+                              setState(() {
+                                isEditing = true;
+                              });
+                            },
+                          ),
+                        IconButton(
+                          icon: const Icon(Icons.logout_outlined, color: Color(0xFFF3EEC8), size: 22),
+                          onPressed: logout,
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
         ),
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        actions: [
-          if (!isEditing && !isUploadingImage)
-            IconButton(
-              icon: const Icon(Icons.edit_outlined),
-              onPressed: () {
-                setState(() {
-                  isEditing = true;
-                });
-              },
-              tooltip: 'Editar Perfil',
-            ),
-          if (!isUploadingImage)
-            IconButton(
-              icon: const Icon(Icons.logout_outlined),
-              onPressed: logout,
-              tooltip: 'Sair',
-            ),
-        ],
       ),
-      body: isLoading || isUploadingImage
-          ? const Center(child: CircularProgressIndicator())
+      body: isLoading
+          ? Center(
+              child: CircularProgressIndicator(
+                valueColor: AlwaysStoppedAnimation<Color>(primaryColor),
+              ),
+            )
           : RefreshIndicator(
               onRefresh: loadUserData,
+              color: primaryColor,
               child: CustomScrollView(
                 slivers: [
                   SliverToBoxAdapter(
@@ -383,46 +663,28 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       children: [
                         const SizedBox(height: 20),
                         
-                        // Foto de Perfil (sempre mostrando o botão de editar)
+                        // Foto de Perfil
                         Center(
-                          child: Stack(
-                            children: [
-                              Container(
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  border: Border.all(
-                                    color: Colors.deepPurple,
-                                    width: 3,
-                                  ),
-                                ),
-                                child: CircleAvatar(
-                                  radius: 60,
-                                  backgroundImage: userData?['foto_perfil'] != null && userData!['foto_perfil']!.isNotEmpty
-                                      ? NetworkImage(userData!['foto_perfil']!)
-                                      : null,
-                                  child: (userData?['foto_perfil'] == null || userData!['foto_perfil']!.isEmpty)
-                                      ? Text(
-                                          (userData?['nome'] ?? 'U')[0].toUpperCase(),
-                                          style: const TextStyle(fontSize: 48),
-                                        )
-                                      : null,
-                                ),
+                          child: Container(
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                color: primaryColor,
+                                width: 3,
                               ),
-                              // Botão de editar foto sempre visível
-                              Positioned(
-                                bottom: 0,
-                                right: 0,
-                                child: CircleAvatar(
-                                  backgroundColor: Colors.deepPurple,
-                                  radius: 20,
-                                  child: IconButton(
-                                    icon: const Icon(Icons.camera_alt, size: 18, color: Colors.white),
-                                    onPressed: updateProfilePicture,
-                                    tooltip: 'Alterar foto',
-                                  ),
-                                ),
-                              ),
-                            ],
+                            ),
+                            child: CircleAvatar(
+                              radius: 60,
+                              backgroundImage: userData?['foto_perfil'] != null && userData!['foto_perfil']!.isNotEmpty
+                                  ? NetworkImage(userData!['foto_perfil']!)
+                                  : null,
+                              child: (userData?['foto_perfil'] == null || userData!['foto_perfil']!.isEmpty)
+                                  ? Text(
+                                      (userData?['nome'] ?? 'U')[0].toUpperCase(),
+                                      style: TextStyle(fontSize: 48, color: primaryColor),
+                                    )
+                                  : null,
+                            ),
                           ),
                         ),
                         
@@ -432,9 +694,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         if (!isEditing) ...[
                           Text(
                             userData?['nome'] ?? 'Usuário',
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 24,
                               fontWeight: FontWeight.bold,
+                              color: primaryColor,
                             ),
                           ),
                           const SizedBox(height: 8),
@@ -445,13 +708,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 userData!['bio'],
                                 style: TextStyle(
                                   fontSize: 14,
-                                  color: Colors.grey[600],
+                                  color: primaryColor.withOpacity(0.7),
                                 ),
                                 textAlign: TextAlign.center,
                               ),
                             ),
                         ] else ...[
-                          // Modo de edição
                           Padding(
                             padding: const EdgeInsets.symmetric(horizontal: 32),
                             child: Column(
@@ -473,6 +735,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                   maxLines: 3,
                                 ),
                                 const SizedBox(height: 12),
+                                TextField(
+                                  controller: photoUrlController,
+                                  decoration: const InputDecoration(
+                                    labelText: 'URL da Foto de Perfil',
+                                    hintText: 'https://exemplo.com/minha-foto.jpg',
+                                    border: OutlineInputBorder(),
+                                  ),
+                                  keyboardType: TextInputType.url,
+                                ),
+                                const SizedBox(height: 12),
                                 Row(
                                   children: [
                                     Expanded(
@@ -482,6 +754,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                             isEditing = false;
                                             nameController.text = userData?['nome'] ?? '';
                                             bioController.text = userData?['bio'] ?? '';
+                                            photoUrlController.text = userData?['foto_perfil'] ?? '';
                                           });
                                         },
                                         child: const Text('Cancelar'),
@@ -491,6 +764,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                     Expanded(
                                       child: ElevatedButton(
                                         onPressed: updateProfile,
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor: primaryColor,
+                                        ),
                                         child: const Text('Salvar'),
                                       ),
                                     ),
@@ -504,37 +780,168 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         const SizedBox(height: 24),
                         
                         // Estatísticas
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                          children: [
-                            _buildStatItem(
-                              moviesWatched.toString(),
-                              'Filmes\nAvaliados',
-                            ),
-                            _buildStatItem(
-                              followers.toString(),
-                              'Seguidores',
-                            ),
-                            _buildStatItem(
-                              following.toString(),
-                              'Seguindo',
-                            ),
-                          ],
+                        Container(
+                          margin: const EdgeInsets.symmetric(horizontal: 16),
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(12),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.05),
+                                blurRadius: 8,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                            children: [
+                              _buildStatItem(
+                                moviesWatched.toString(),
+                                'Filmes\nAvaliados',
+                              ),
+                              _buildStatItem(
+                                followers.toString(),
+                                'Seguidores',
+                              ),
+                              _buildStatItem(
+                                following.toString(),
+                                'Seguindo',
+                              ),
+                            ],
+                          ),
                         ),
                         
-                        const Divider(height: 32),
+                        const Divider(height: 32, thickness: 1),
+                        
+                        // Sugestões de Perfis para Seguir
+                        if (suggestedUsers.isNotEmpty) ...[
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(
+                                  'SUGESTÕES PARA SEGUIR',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.bold,
+                                    color: primaryColor,
+                                    letterSpacing: 1,
+                                  ),
+                                ),
+                                Text(
+                                  '${suggestedUsers.length} perfis',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: primaryColor.withOpacity(0.5),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          
+                          SizedBox(
+                            height: 100,
+                            child: ListView.builder(
+                              scrollDirection: Axis.horizontal,
+                              padding: const EdgeInsets.symmetric(horizontal: 16),
+                              itemCount: suggestedUsers.length,
+                              itemBuilder: (context, index) {
+                                final user = suggestedUsers[index];
+                                return Container(
+                                  width: 120,
+                                  margin: const EdgeInsets.only(right: 12),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white,
+                                    borderRadius: BorderRadius.circular(12),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: Colors.black.withOpacity(0.05),
+                                        blurRadius: 4,
+                                        offset: const Offset(0, 2),
+                                      ),
+                                    ],
+                                  ),
+                                  child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      CircleAvatar(
+                                        radius: 25,
+                                        backgroundColor: primaryColor.withOpacity(0.1),
+                                        backgroundImage: user['foto_perfil'] != null && user['foto_perfil'].toString().isNotEmpty
+                                            ? NetworkImage(user['foto_perfil'])
+                                            : null,
+                                        child: (user['foto_perfil'] == null || user['foto_perfil'].toString().isEmpty)
+                                            ? Text(
+                                                (user['nome'] ?? 'U')[0].toUpperCase(),
+                                                style: TextStyle(
+                                                  fontSize: 20,
+                                                  fontWeight: FontWeight.bold,
+                                                  color: primaryColor,
+                                                ),
+                                              )
+                                            : null,
+                                      ),
+                                      const SizedBox(height: 6),
+                                      Text(
+                                        user['nome'] ?? 'Usuário',
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w500,
+                                          color: primaryColor,
+                                        ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                      const SizedBox(height: 4),
+                                      ElevatedButton(
+                                        onPressed: () => followUser(user['id'], user['nome'] ?? 'usuário'),
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor: accentColor,
+                                          foregroundColor: Colors.white,
+                                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                                          minimumSize: const Size(0, 28),
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius: BorderRadius.circular(15),
+                                          ),
+                                        ),
+                                        child: const Text(
+                                          'Seguir',
+                                          style: TextStyle(fontSize: 10),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+                          const Divider(height: 32, thickness: 1),
+                        ],
                         
                         // Título da seção de filmes avaliados
-                        const Padding(
-                          padding: EdgeInsets.symmetric(horizontal: 16),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
                           child: Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
                               Text(
-                                'Filmes Avaliados',
+                                'FILMES AVALIADOS',
                                 style: TextStyle(
-                                  fontSize: 18,
+                                  fontSize: 14,
                                   fontWeight: FontWeight.bold,
+                                  color: primaryColor,
+                                  letterSpacing: 1,
+                                ),
+                              ),
+                              Text(
+                                '${moviesWatched} filmes',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: primaryColor.withOpacity(0.5),
                                 ),
                               ),
                             ],
@@ -586,12 +993,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             
                             return GestureDetector(
                               onTap: () {
-                                _showMovieDetails(movie);
+                                _showReviewDetails(review);
                               },
-                              child: Card(
-                                elevation: 2,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(8),
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(12),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black.withOpacity(0.05),
+                                      blurRadius: 4,
+                                      offset: const Offset(0, 2),
+                                    ),
+                                  ],
                                 ),
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -599,7 +1013,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                     Expanded(
                                       child: ClipRRect(
                                         borderRadius: const BorderRadius.vertical(
-                                          top: Radius.circular(8),
+                                          top: Radius.circular(12),
                                         ),
                                         child: Image.network(
                                           movie?['poster_url'] ?? '',
@@ -607,11 +1021,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                           fit: BoxFit.cover,
                                           errorBuilder: (context, error, stackTrace) {
                                             return Container(
-                                              color: Colors.grey[300],
-                                              child: const Icon(
+                                              color: primaryColor.withOpacity(0.1),
+                                              child: Icon(
                                                 Icons.movie,
                                                 size: 40,
-                                                color: Colors.grey,
+                                                color: primaryColor.withOpacity(0.3),
                                               ),
                                             );
                                           },
@@ -639,9 +1053,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                           const SizedBox(height: 2),
                                           Text(
                                             movie?['titulo'] ?? 'Sem título',
-                                            style: const TextStyle(
+                                            style: TextStyle(
                                               fontSize: 11,
                                               fontWeight: FontWeight.w500,
+                                              color: primaryColor,
                                             ),
                                             maxLines: 2,
                                             overflow: TextOverflow.ellipsis,
@@ -688,170 +1103,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
       children: [
         Text(
           value,
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 24,
             fontWeight: FontWeight.bold,
+            color: primaryColor,
           ),
         ),
         const SizedBox(height: 4),
         Text(
           label,
           style: TextStyle(
-            fontSize: 12,
-            color: Colors.grey[600],
+            fontSize: 11,
+            color: primaryColor.withOpacity(0.6),
           ),
           textAlign: TextAlign.center,
         ),
       ],
-    );
-  }
-
-  void _showMovieDetails(Map<String, dynamic>? movie) {
-    if (movie == null) return;
-    
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => DraggableScrollableSheet(
-        initialChildSize: 0.6,
-        minChildSize: 0.4,
-        maxChildSize: 0.9,
-        builder: (_, scrollController) {
-          return Container(
-            decoration: const BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.vertical(
-                top: Radius.circular(20),
-              ),
-            ),
-            child: SingleChildScrollView(
-              controller: scrollController,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Center(
-                    child: Container(
-                      margin: const EdgeInsets.only(top: 12),
-                      width: 40,
-                      height: 4,
-                      decoration: BoxDecoration(
-                        color: Colors.grey[300],
-                        borderRadius: BorderRadius.circular(2),
-                      ),
-                    ),
-                  ),
-                  
-                  Stack(
-                    children: [
-                      ClipRRect(
-                        borderRadius: const BorderRadius.vertical(
-                          top: Radius.circular(20),
-                        ),
-                        child: Image.network(
-                          movie['poster_url'] ?? '',
-                          height: 250,
-                          width: double.infinity,
-                          fit: BoxFit.cover,
-                          errorBuilder: (context, error, stackTrace) {
-                            return Container(
-                              height: 250,
-                              color: Colors.grey[300],
-                              child: const Icon(
-                                Icons.movie,
-                                size: 80,
-                                color: Colors.grey,
-                              ),
-                            );
-                          },
-                        ),
-                      ),
-                      Container(
-                        height: 250,
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.topCenter,
-                            end: Alignment.bottomCenter,
-                            colors: [
-                              Colors.transparent,
-                              Colors.black.withOpacity(0.7),
-                            ],
-                          ),
-                        ),
-                      ),
-                      Positioned(
-                        bottom: 16,
-                        left: 16,
-                        right: 16,
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              movie['titulo'] ?? 'Sem título',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 24,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Row(
-                              children: [
-                                if (movie['ano'] != null)
-                                  Text(
-                                    movie['ano'].toString(),
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 14,
-                                    ),
-                                  ),
-                                if (movie['ano'] != null && movie['genero'] != null)
-                                  const SizedBox(width: 8),
-                                if (movie['genero'] != null)
-                                  Text(
-                                    movie['genero'].toString(),
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 14,
-                                    ),
-                                  ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                  
-                  Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'Sinopse',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          movie['descricao'] ?? 'Nenhuma descrição disponível para este filme.',
-                          style: const TextStyle(
-                            fontSize: 14,
-                            height: 1.5,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          );
-        },
-      ),
     );
   }
 }
