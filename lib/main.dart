@@ -7,6 +7,7 @@ import 'pages/login.dart';
 import 'pages/cadastrar.dart';
 import 'pages/detalhes_filmes.dart';
 import 'pages/discover.dart';
+import 'pages/login.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -38,6 +39,7 @@ class MyApp extends StatelessWidget {
         '/detalhe_filme': (context) => MovieDetailScreen(
           movieId: ModalRoute.of(context)?.settings.arguments as String,
         ),
+        '/login': (context) => const LoginScreen(),
       },
     );
   }
