@@ -30,6 +30,7 @@ class MyApp extends StatelessWidget {
         '/feed': (context) => const FeedScreen(),
         '/discover': (context) => const DiscoverScreen(),
         '/profile': (context) => const ProfileScreen(),
+        '/login': (context) => const LoginScreen(),
       },
     );
   }
