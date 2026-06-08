@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../componets/navbar.dart';
+import 'discover.dart';
 
 class FeedScreen extends StatefulWidget {
   const FeedScreen({super.key});
@@ -16,6 +17,11 @@ class _FeedScreenState extends State<FeedScreen> {
   Map<String, bool> likedStatus = {};
   Map<String, int> likesCount = {};
   bool isLoading = true;
+
+  // Cores da paleta
+  final Color backgroundColor = const Color(0xFFF3EEC8); // #f3eec8
+  final Color primaryColor = const Color(0xFF473835); // #473835
+  final Color accentColor = const Color(0xFFB85C5A); // Tom complementar
 
   @override
   void initState() {
@@ -75,7 +81,6 @@ class _FeedScreenState extends State<FeedScreen> {
         reviews = List<Map<String, dynamic>>.from(response);
       });
 
-      // Carregar curtidas para cada avaliação
       for (var review in reviews) {
         await loadLikesForReview(review['id'].toString());
       }
@@ -89,7 +94,6 @@ class _FeedScreenState extends State<FeedScreen> {
 
   Future<void> loadLikesForReview(String reviewId) async {
     try {
-      // Contar curtidas
       final countResponse = await supabase
           .from('curtidas')
           .select('id')
@@ -99,7 +103,6 @@ class _FeedScreenState extends State<FeedScreen> {
         likesCount[reviewId] = countResponse.length;
       });
 
-      // Verificar se usuário atual curtiu
       final currentUser = supabase.auth.currentUser;
       if (currentUser != null) {
         final likeResponse = await supabase
@@ -130,7 +133,6 @@ class _FeedScreenState extends State<FeedScreen> {
 
     final isLiked = likedStatus[reviewId] ?? false;
 
-    // Atualizar UI imediatamente
     setState(() {
       likedStatus[reviewId] = !isLiked;
       likesCount[reviewId] = (likesCount[reviewId] ?? 0) + (isLiked ? -1 : 1);
@@ -150,7 +152,6 @@ class _FeedScreenState extends State<FeedScreen> {
         });
       }
     } catch (e) {
-      // Reverter em caso de erro
       setState(() {
         likedStatus[reviewId] = isLiked;
         likesCount[reviewId] = (likesCount[reviewId] ?? 0) + (isLiked ? 1 : -1);
@@ -164,40 +165,120 @@ class _FeedScreenState extends State<FeedScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text(
-          'CineFeed',
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
-            fontSize: 24,
+      backgroundColor: backgroundColor,
+      appBar: PreferredSize(
+        preferredSize: const Size.fromHeight(80),
+        child: Container(
+          decoration: BoxDecoration(
+            color: primaryColor,
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.1),
+                blurRadius: 4,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: Row(
+                children: [
+                  // Logo Letterboxd estilizada
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Text(
+                        'LETTERBOX',
+                        style: TextStyle(
+                          color: Color(0xFFF3EEC8),
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: 1.5,
+                        ),
+                      ),
+                      Row(
+                        children: [
+                          const Text(
+                            'DESDE',
+                            style: TextStyle(
+                              color: Color(0xFFF3EEC8),
+                              fontSize: 8,
+                              letterSpacing: 1,
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF3EEC8),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: const Text(
+                              '2026',
+                              style: TextStyle(
+                                color: Color(0xFF473835),
+                                fontSize: 8,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                  const Spacer(),
+                  // Ícones de ação
+                  Container(
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF3EEC8).withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Row(
+                      children: [
+                        IconButton(
+                          icon: const Icon(Icons.search, color: Color(0xFFF3EEC8), size: 22),
+                          onPressed: () {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Busca em breve')),
+                            );
+                          },
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.add_box_outlined, color: Color(0xFFF3EEC8), size: 22),
+                          onPressed: () {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Adicionar avaliação em breve')),
+                            );
+                          },
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.favorite_border, color: Color(0xFFF3EEC8), size: 22),
+                          onPressed: () {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Atividades em breve')),
+                            );
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
         ),
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.notifications_outlined),
-            onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Notificações em breve')),
-              );
-            },
-            tooltip: 'Notificações',
-          ),
-          IconButton(
-            icon: const Icon(Icons.rate_review_outlined),
-            onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Adicionar avaliação em breve')),
-              );
-            },
-            tooltip: 'Adicionar Avaliação',
-          ),
-        ],
       ),
       body: isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? Center(
+              child: CircularProgressIndicator(
+                valueColor: AlwaysStoppedAnimation<Color>(primaryColor),
+              ),
+            )
           : RefreshIndicator(
               onRefresh: loadData,
+              color: primaryColor,
               child: CustomScrollView(
                 slivers: [
                   // Destaques da Semana
@@ -205,16 +286,41 @@ class _FeedScreenState extends State<FeedScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Padding(
-                          padding: EdgeInsets.all(16),
-                          child: Text(
-                            'Destaques da Semana',
-                            style: TextStyle(
-                              fontSize: 20,
-                              fontWeight: FontWeight.bold,
-                            ),
+                        const SizedBox(height: 24),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                'DESTAQUES DA SEMANA',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.bold,
+                                  color: primaryColor,
+                                  letterSpacing: 1,
+                                ),
+                              ),
+                              TextButton(
+                                 onPressed: () {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => const DiscoverScreen()),
+    );
+  },
+                                child: Text(
+                                  'VER TODOS',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: primaryColor.withValues(alpha: 0.7),
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
+                        const SizedBox(height: 12),
                         if (highlights.isEmpty)
                           const Padding(
                             padding: EdgeInsets.all(32),
@@ -224,7 +330,7 @@ class _FeedScreenState extends State<FeedScreen> {
                           )
                         else
                           SizedBox(
-                            height: 240,
+                            height: 220,
                             child: ListView.builder(
                               scrollDirection: Axis.horizontal,
                               padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -232,40 +338,75 @@ class _FeedScreenState extends State<FeedScreen> {
                               itemBuilder: (context, index) {
                                 final movie = highlights[index];
                                 return Container(
-                                  width: 140,
+                                  width: 130,
                                   margin: const EdgeInsets.symmetric(horizontal: 4),
                                   child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
-                                      ClipRRect(
-                                        borderRadius: BorderRadius.circular(12),
-                                        child: Image.network(
-                                          movie['poster_url'] ?? '',
-                                          height: 180,
-                                          width: 140,
-                                          fit: BoxFit.cover,
-                                          errorBuilder: (context, error, stackTrace) {
-                                            return Container(
-                                              height: 180,
-                                              width: 140,
-                                              color: Colors.grey[300],
-                                              child: const Icon(
-                                                Icons.movie,
-                                                size: 50,
-                                                color: Colors.grey,
+                                      Stack(
+                                        children: [
+                                          ClipRRect(
+                                            borderRadius: BorderRadius.circular(8),
+                                            child: Image.network(
+                                              movie['poster_url'] ?? '',
+                                              height: 170,
+                                              width: 130,
+                                              fit: BoxFit.cover,
+                                              errorBuilder: (context, error, stackTrace) {
+                                                return Container(
+                                                  height: 170,
+                                                  width: 130,
+                                                  color: primaryColor.withValues(alpha: 0.1),
+                                                  child: Icon(
+                                                    Icons.movie,
+                                                    size: 40,
+                                                    color: primaryColor.withValues(alpha: 0.3),
+                                                  ),
+                                                );
+                                              },
+                                            ),
+                                          ),
+                                          // Nota do filme
+                                          Positioned(
+                                            bottom: 8,
+                                            right: 8,
+                                            child: Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                              decoration: BoxDecoration(
+                                                color: primaryColor,
+                                                borderRadius: BorderRadius.circular(4),
                                               ),
-                                            );
-                                          },
-                                        ),
+                                              child: Row(
+                                                children: [
+                                                  const Icon(
+                                                    Icons.star,
+                                                    size: 10,
+                                                    color: Color(0xFFF3EEC8),
+                                                  ),
+                                                  const SizedBox(width: 2),
+                                                  Text(
+                                                    '4.2',
+                                                    style: TextStyle(
+                                                      fontSize: 10,
+                                                      color: backgroundColor,
+                                                      fontWeight: FontWeight.bold,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                          ),
+                                        ],
                                       ),
-                                      const SizedBox(height: 8),
+                                      const SizedBox(height: 6),
                                       Text(
                                         movie['titulo'] ?? 'Sem título',
-                                        style: const TextStyle(
+                                        style: TextStyle(
                                           fontSize: 12,
                                           fontWeight: FontWeight.w500,
+                                          color: primaryColor,
                                         ),
                                         maxLines: 2,
-                                        textAlign: TextAlign.center,
                                         overflow: TextOverflow.ellipsis,
                                       ),
                                     ],
@@ -274,7 +415,7 @@ class _FeedScreenState extends State<FeedScreen> {
                               },
                             ),
                           ),
-                        const Divider(height: 32),
+                        const Divider(height: 32, thickness: 1),
                       ],
                     ),
                   ),
@@ -295,11 +436,6 @@ class _FeedScreenState extends State<FeedScreen> {
                                       'Nenhuma avaliação ainda',
                                       style: TextStyle(fontSize: 16, color: Colors.grey),
                                     ),
-                                    SizedBox(height: 8),
-                                    Text(
-                                      'Seja o primeiro a avaliar um filme!',
-                                      style: TextStyle(fontSize: 14, color: Colors.grey),
-                                    ),
                                   ],
                                 ),
                               ),
@@ -313,11 +449,18 @@ class _FeedScreenState extends State<FeedScreen> {
                                 final user = review['usuarios'];
                                 final movie = review['filmes'];
                                 
-                                return Card(
+                                return Container(
                                   margin: const EdgeInsets.only(bottom: 16),
-                                  elevation: 2,
-                                  shape: RoundedRectangleBorder(
+                                  decoration: BoxDecoration(
+                                    color: Colors.white,
                                     borderRadius: BorderRadius.circular(12),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: Colors.black.withValues(alpha: 0.05),
+                                        blurRadius: 8,
+                                        offset: const Offset(0, 2),
+                                      ),
+                                    ],
                                   ),
                                   child: Padding(
                                     padding: const EdgeInsets.all(12),
@@ -328,38 +471,49 @@ class _FeedScreenState extends State<FeedScreen> {
                                         Row(
                                           children: [
                                             CircleAvatar(
-                                              radius: 20,
+                                              radius: 18,
+                                              backgroundColor: primaryColor.withValues(alpha: 0.1),
                                               backgroundImage: user?['foto_perfil'] != null && user!['foto_perfil']!.isNotEmpty
                                                   ? NetworkImage(user['foto_perfil']!)
                                                   : null,
                                               child: (user?['foto_perfil'] == null || user!['foto_perfil']!.isEmpty)
                                                   ? Text(
                                                       (user?['nome'] ?? 'U')[0].toUpperCase(),
-                                                      style: const TextStyle(fontSize: 16),
+                                                      style: TextStyle(
+                                                        fontSize: 14,
+                                                        fontWeight: FontWeight.bold,
+                                                        color: primaryColor,
+                                                      ),
                                                     )
                                                   : null,
                                             ),
-                                            const SizedBox(width: 12),
+                                            const SizedBox(width: 10),
                                             Expanded(
                                               child: Column(
                                                 crossAxisAlignment: CrossAxisAlignment.start,
                                                 children: [
                                                   Text(
                                                     user?['nome'] ?? 'Usuário',
-                                                    style: const TextStyle(
+                                                    style: TextStyle(
                                                       fontWeight: FontWeight.bold,
-                                                      fontSize: 16,
+                                                      fontSize: 14,
+                                                      color: primaryColor,
                                                     ),
                                                   ),
                                                   Text(
                                                     _formatDate(review['created_at']),
                                                     style: TextStyle(
-                                                      fontSize: 12,
-                                                      color: Colors.grey[600],
+                                                      fontSize: 10,
+                                                      color: primaryColor.withValues(alpha: 0.5),
                                                     ),
                                                   ),
                                                 ],
                                               ),
+                                            ),
+                                            // Ícone de mais opções
+                                            IconButton(
+                                              icon: Icon(Icons.more_horiz, size: 18, color: primaryColor.withValues(alpha: 0.5)),
+                                              onPressed: () {},
                                             ),
                                           ],
                                         ),
@@ -370,18 +524,21 @@ class _FeedScreenState extends State<FeedScreen> {
                                           crossAxisAlignment: CrossAxisAlignment.start,
                                           children: [
                                             ClipRRect(
-                                              borderRadius: BorderRadius.circular(8),
+                                              borderRadius: BorderRadius.circular(6),
                                               child: Image.network(
                                                 movie?['poster_url'] ?? '',
-                                                height: 80,
+                                                height: 90,
                                                 width: 60,
                                                 fit: BoxFit.cover,
                                                 errorBuilder: (context, error, stackTrace) {
                                                   return Container(
-                                                    height: 80,
+                                                    height: 90,
                                                     width: 60,
-                                                    color: Colors.grey[300],
-                                                    child: const Icon(Icons.movie, color: Colors.grey),
+                                                    color: primaryColor.withValues(alpha: 0.1),
+                                                    child: Icon(
+                                                      Icons.movie,
+                                                      color: primaryColor.withValues(alpha: 0.3),
+                                                    ),
                                                   );
                                                 },
                                               ),
@@ -393,12 +550,13 @@ class _FeedScreenState extends State<FeedScreen> {
                                                 children: [
                                                   Text(
                                                     movie?['titulo'] ?? 'Filme',
-                                                    style: const TextStyle(
+                                                    style: TextStyle(
                                                       fontWeight: FontWeight.bold,
-                                                      fontSize: 16,
+                                                      fontSize: 15,
+                                                      color: primaryColor,
                                                     ),
                                                   ),
-                                                  const SizedBox(height: 8),
+                                                  const SizedBox(height: 6),
                                                   Row(
                                                     children: [
                                                       ...List.generate(5, (starIndex) {
@@ -407,18 +565,27 @@ class _FeedScreenState extends State<FeedScreen> {
                                                               ? Icons.star
                                                               : Icons.star_border,
                                                           color: Colors.amber,
-                                                          size: 20,
+                                                          size: 16,
                                                         );
                                                       }),
-                                                      const SizedBox(width: 8),
+                                                      const SizedBox(width: 4),
                                                       Text(
-                                                        '(${review['nota']}/5)',
+                                                        '${(review['nota'] ?? 0).toStringAsFixed(1)}',
                                                         style: TextStyle(
-                                                          fontSize: 12,
-                                                          color: Colors.grey[600],
+                                                          fontSize: 11,
+                                                          fontWeight: FontWeight.bold,
+                                                          color: primaryColor,
                                                         ),
                                                       ),
                                                     ],
+                                                  ),
+                                                  const SizedBox(height: 4),
+                                                  Text(
+                                                    'Avaliado em ${_formatDetailedDate(review['created_at'])}',
+                                                    style: TextStyle(
+                                                      fontSize: 9,
+                                                      color: primaryColor.withValues(alpha: 0.5),
+                                                    ),
                                                   ),
                                                 ],
                                               ),
@@ -432,15 +599,19 @@ class _FeedScreenState extends State<FeedScreen> {
                                           Container(
                                             padding: const EdgeInsets.all(10),
                                             decoration: BoxDecoration(
-                                              color: Colors.grey[100],
+                                              color: backgroundColor.withValues(alpha: 0.5),
                                               borderRadius: BorderRadius.circular(8),
                                             ),
                                             child: Text(
                                               review['comentario'],
-                                              style: const TextStyle(fontSize: 14, height: 1.4),
+                                              style: TextStyle(
+                                                fontSize: 13,
+                                                height: 1.4,
+                                                color: primaryColor,
+                                              ),
                                             ),
                                           ),
-                                        const SizedBox(height: 12),
+                                        const SizedBox(height: 10),
                                         
                                         // Botões de Interação
                                         Row(
@@ -458,16 +629,16 @@ class _FeedScreenState extends State<FeedScreen> {
                                                           ? Icons.favorite
                                                           : Icons.favorite_border,
                                                       color: likedStatus[reviewId] == true
-                                                          ? Colors.red
-                                                          : Colors.grey,
-                                                      size: 24,
+                                                          ? accentColor
+                                                          : primaryColor.withValues(alpha: 0.5),
+                                                      size: 20,
                                                     ),
                                                     const SizedBox(width: 6),
                                                     Text(
-                                                      '${likesCount[reviewId] ?? 0}',
-                                                      style: const TextStyle(
-                                                        fontSize: 14,
-                                                        fontWeight: FontWeight.w500,
+                                                      '${likesCount[reviewId] ?? 0} curtidas',
+                                                      style: TextStyle(
+                                                        fontSize: 12,
+                                                        color: primaryColor.withValues(alpha: 0.7),
                                                       ),
                                                     ),
                                                   ],
@@ -489,21 +660,32 @@ class _FeedScreenState extends State<FeedScreen> {
                                                 child: Row(
                                                   children: [
                                                     Icon(
-                                                      Icons.comment_outlined,
-                                                      size: 22,
-                                                      color: Colors.grey[700],
+                                                      Icons.chat_bubble_outline,
+                                                      size: 18,
+                                                      color: primaryColor.withValues(alpha: 0.5),
                                                     ),
                                                     const SizedBox(width: 6),
                                                     Text(
                                                       'Comentar',
                                                       style: TextStyle(
-                                                        fontSize: 14,
-                                                        color: Colors.grey[700],
+                                                        fontSize: 12,
+                                                        color: primaryColor.withValues(alpha: 0.7),
                                                       ),
                                                     ),
                                                   ],
                                                 ),
                                               ),
+                                            ),
+                                            const Spacer(),
+                                            
+                                            // Ícone de compartilhar
+                                            IconButton(
+                                              icon: Icon(
+                                                Icons.share_outlined,
+                                                size: 18,
+                                                color: primaryColor.withValues(alpha: 0.5),
+                                              ),
+                                              onPressed: () {},
                                             ),
                                           ],
                                         ),
@@ -516,6 +698,37 @@ class _FeedScreenState extends State<FeedScreen> {
                             ),
                           ),
                   ),
+                  
+                  // Footer
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 24),
+                      child: Center(
+                        child: Column(
+                          children: [
+                            Text(
+                              'LETTERBOX',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                                letterSpacing: 2,
+                                color: primaryColor.withValues(alpha: 0.3),
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              'DESDE 2026',
+                              style: TextStyle(
+                                fontSize: 8,
+                                letterSpacing: 1,
+                                color: primaryColor.withValues(alpha: 0.2),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -524,16 +737,15 @@ class _FeedScreenState extends State<FeedScreen> {
         onTap: (index) {
           switch (index) {
             case 0:
-              // Já está no Feed
               break;
-              case 1:
-          Navigator.pushReplacementNamed(context, '/discover');
-          break;
-        case 2:
-          Navigator.pushReplacementNamed(context, '/profile');
-          break;
-            }
-          },
+            case 1:
+              Navigator.pushReplacementNamed(context, '/discover');
+              break;
+            case 2:
+              Navigator.pushReplacementNamed(context, '/profile');
+              break;
+          }
+        },
       ),
     );
   }
@@ -546,7 +758,7 @@ class _FeedScreenState extends State<FeedScreen> {
       final difference = now.difference(date);
       
       if (difference.inDays > 7) {
-        return '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}';
+        return '${date.day}/${date.month}/${date.year}';
       } else if (difference.inDays > 0) {
         return 'há ${difference.inDays} dia${difference.inDays > 1 ? 's' : ''}';
       } else if (difference.inHours > 0) {
@@ -558,6 +770,16 @@ class _FeedScreenState extends State<FeedScreen> {
       }
     } catch (e) {
       return 'Data desconhecida';
+    }
+  }
+
+  String _formatDetailedDate(String? dateString) {
+    if (dateString == null) return 'data desconhecida';
+    try {
+      final date = DateTime.parse(dateString);
+      return '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}';
+    } catch (e) {
+      return 'data desconhecida';
     }
   }
 }
