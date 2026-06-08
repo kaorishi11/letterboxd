@@ -22,7 +22,7 @@ class CustomNavbar extends StatelessWidget {
       items: const [
         BottomNavigationBarItem(
           icon: Icon(Icons.home),
-          label: 'Feed',
+          label: 'Feedd',
         ),
         BottomNavigationBarItem(
           icon: Icon(Icons.search),
